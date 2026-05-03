@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+
+# Local taxonomy/runtime data
+*.db
+*.db-*
+taxonomy.json
+
+# Library scans and generated exports
+imports/
+exports/
+backups/
+
+# Local Picard/plugin runtime files
+*.log
+plugins/local_genre_db/*.log
+plugins/local_genre_db/*.zip
+plugins/local_genre_db/taxonomy_path.txt
+plugins/local_genre_db/taxonomy_json_path.txt

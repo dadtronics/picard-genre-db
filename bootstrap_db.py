@@ -10,6 +10,7 @@ STARTER_GENRES = [
     'Country', 'Easy Listening', 'Electronic', 'Folk', 'Holiday',
     'International', 'Jazz', 'Latin', 'New Age', 'Pop/Rock', 'R&B',
     'Rap', 'Reggae', 'Religious', 'Stage & Screen', 'Vocal',
+    'DJ Mix',
 ]
 
 STARTER_STYLES = {
