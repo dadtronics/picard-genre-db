@@ -88,6 +88,18 @@ def message_redirect(path: str, message: str, level: str = 'ok') -> str:
     return f'{path}{sep}{query}'
 
 
+def post_error_redirect(path: str, form: dict[str, str], exc: BaseException) -> str:
+    if path in ('/approve-import', '/dismiss-import'):
+        return message_redirect(import_return_path(form), str(exc), 'error')
+    if path == '/clear-import-source':
+        return message_redirect('/imports', str(exc), 'error')
+    if path in ('/save-decision', '/delete-decision'):
+        return message_redirect('/decisions', str(exc), 'error')
+    if path in ('/add-genre', '/add-style'):
+        return message_redirect('/vocabulary', str(exc), 'error')
+    return message_redirect(path or '/', str(exc), 'error')
+
+
 class AppHandler(BaseHTTPRequestHandler):
     server_version = 'PicardGenreDB/0.1'
 
@@ -124,15 +136,24 @@ class AppHandler(BaseHTTPRequestHandler):
                 self.handle_add_genre(form)
             elif parsed.path == '/add-style':
                 self.handle_add_style(form)
+            elif parsed.path == '/delete-style':
+                self.handle_delete_style(form)
+            elif parsed.path == '/split-style':
+                self.handle_split_style(form)
             elif parsed.path == '/export-json':
                 self.handle_export_json()
             elif parsed.path == '/approve-import':
                 self.handle_approve_import(form)
+            elif parsed.path == '/dismiss-import':
+                self.handle_dismiss_import(form)
+            elif parsed.path == '/clear-import-source':
+                self.handle_clear_import_source(form)
             else:
                 self.not_found()
-        except Exception as exc:
-            redirect = message_redirect(parsed.path or '/', str(exc), 'error')
-            self.redirect(redirect)
+        except BaseException as exc:
+            if isinstance(exc, KeyboardInterrupt):
+                raise
+            self.redirect(post_error_redirect(parsed.path, form, exc))
 
     def html_response(self, body: str, status: int = 200) -> None:
         data = body.encode('utf-8')
@@ -216,6 +237,34 @@ class AppHandler(BaseHTTPRequestHandler):
             con.close()
         self.redirect(message_redirect('/vocabulary', f'Style added: {style}'))
 
+    def handle_delete_style(self, form: dict[str, str]) -> None:
+        style = clean(form.get('style', ''))
+        if not style:
+            raise ValueError('Style is required.')
+        con = connect()
+        try:
+            deleted = delete_style(con, style)
+            export_json(con)
+        finally:
+            con.close()
+        self.redirect(message_redirect('/vocabulary', f'Deleted style: {style}' if deleted else f'Style not found: {style}'))
+
+    def handle_split_style(self, form: dict[str, str]) -> None:
+        genre = clean(form.get('genre', ''))
+        style = clean(form.get('style', ''))
+        parts = taxonomy.normalize_manual_list_text(form.get('parts', ''))
+        if not genre or not style or not parts:
+            raise ValueError('Genre, style, and replacement parts are required.')
+        con = connect()
+        try:
+            for part in split_values(parts):
+                taxonomy.add_style(con, genre, part)
+            delete_style(con, style)
+            export_json(con)
+        finally:
+            con.close()
+        self.redirect(message_redirect('/vocabulary', f'Split style: {style}'))
+
     def handle_export_json(self) -> None:
         con = connect()
         try:
@@ -228,6 +277,12 @@ class AppHandler(BaseHTTPRequestHandler):
         source = clean(form.get('source', ''))
         scope = clean(form.get('scope', 'release_group'))
         mbid = clean(form.get('mbid', ''))
+        original_scope = clean(form.get('return_scope', scope))
+        query = clean(form.get('q', ''))
+        limit = clean(form.get('limit', '100'))
+        target = clean(form.get('target', ''))
+        if target:
+            scope, mbid = parse_import_target(target)
         genre = taxonomy.normalize_manual_list_text(form.get('genre', ''))
         styles = normalize_joined_values(form.get('styles', ''))
         if scope not in SCOPES:
@@ -240,8 +295,45 @@ class AppHandler(BaseHTTPRequestHandler):
             export_json(con)
         finally:
             con.close()
-        path = f'/imports?source={urlencode_value(source)}&scope={urlencode_value(scope)}'
+        return_params = {
+            'source': source,
+            'scope': original_scope if original_scope in SCOPES else scope,
+            'limit': limit or '100',
+        }
+        if query:
+            return_params['q'] = query
+        path = f'/imports?{urlencode(return_params)}'
         self.redirect(message_redirect(path, 'Imported decision approved.'))
+
+    def handle_dismiss_import(self, form: dict[str, str]) -> None:
+        source = clean(form.get('source', ''))
+        scope = clean(form.get('scope', 'release_group'))
+        mbid = clean(form.get('mbid', ''))
+        genre = taxonomy.normalize_manual_list_text(form.get('genre', ''))
+        styles = normalize_joined_values(form.get('styles', ''))
+        if scope not in SCOPES:
+            raise ValueError(f'Unknown scope: {scope}')
+        if not source or not mbid:
+            raise ValueError('Source and MBID are required.')
+        con = connect()
+        try:
+            deleted = delete_import_candidate(con, source, scope, mbid, genre, styles)
+        finally:
+            con.close()
+        self.redirect(message_redirect(import_return_path(form), f'Dismissed {deleted} imported tracks.'))
+
+    def handle_clear_import_source(self, form: dict[str, str]) -> None:
+        source = clean(form.get('source', ''))
+        if not source:
+            raise ValueError('Source is required.')
+        con = connect()
+        try:
+            cur = con.execute('DELETE FROM library_tag_import WHERE import_source = ?', (source,))
+            con.commit()
+            deleted = cur.rowcount if cur.rowcount is not None else 0
+        finally:
+            con.close()
+        self.redirect(message_redirect('/imports', f'Cleared {deleted} imported tracks from {source}.'))
 
     def render_home(self, parsed) -> str:
         con = connect()
@@ -283,7 +375,7 @@ class AppHandler(BaseHTTPRequestHandler):
             <section class="metrics">{cards}</section>
             <section>
               <h2>Recent Decisions</h2>
-              <table>
+              <table class="import-table">
                 <thead><tr><th>Scope</th><th>Name</th><th>MBID</th><th>Genre</th><th>Grouping</th><th>Updated</th><th></th></tr></thead>
                 <tbody>{recent_rows}</tbody>
               </table>
@@ -296,6 +388,7 @@ class AppHandler(BaseHTTPRequestHandler):
         edit_scope = query.get('scope', ['release_group'])[0]
         edit_mbid = query.get('mbid', [''])[0]
         filter_scope = query.get('filter_scope', ['all'])[0]
+        q = query.get('q', [''])[0].strip()
         if filter_scope != 'all' and filter_scope not in SCOPES:
             filter_scope = 'all'
 
@@ -304,7 +397,7 @@ class AppHandler(BaseHTTPRequestHandler):
             genres = fetch_genres(con)
             styles = fetch_styles(con)
             decision = fetch_decision(con, edit_scope, edit_mbid) if edit_mbid else None
-            rows = recent_decisions(con, 200, filter_scope)
+            rows = recent_decisions(con, 200, filter_scope, q)
             counts = decision_counts(con)
         finally:
             con.close()
@@ -362,6 +455,9 @@ class AppHandler(BaseHTTPRequestHandler):
                 <label>Show
                   <select name="filter_scope">{filter_options}</select>
                 </label>
+                <label>Search
+                  <input name="q" value="{h(q)}" placeholder="artist, album, style, MBID">
+                </label>
                 <button type="submit">Filter</button>
               </form>
               <table>
@@ -377,6 +473,7 @@ class AppHandler(BaseHTTPRequestHandler):
         try:
             genres = fetch_genres(con)
             styles = fetch_styles(con)
+            suspicious = suspicious_styles(styles)
         finally:
             con.close()
         genre_options = ''.join(option(name, name, False) for name in genres)
@@ -384,6 +481,9 @@ class AppHandler(BaseHTTPRequestHandler):
             f'<tr><td>{h(genre)}</td><td>{h(style)}</td></tr>'
             for genre, style in styles
         )
+        suspicious_rows = ''.join(vocabulary_cleanup_row(genre, style) for genre, style in suspicious)
+        if not suspicious_rows:
+            suspicious_rows = '<tr><td colspan="4">No suspicious styles found.</td></tr>'
         content = f'''
             {self.alert(parsed)}
             <section class="split">
@@ -398,6 +498,14 @@ class AppHandler(BaseHTTPRequestHandler):
                 <label>Style <input name="style" required></label>
                 <button type="submit">Add Style</button>
               </form>
+            </section>
+            <section>
+              <h2>Suspicious Styles</h2>
+              <p class="muted">These look like combined import values. Split preserves slash terms like Pop/Rock and Alternative/Indie Rock where possible.</p>
+              <table>
+                <thead><tr><th>Genre</th><th>Style</th><th>Split Into</th><th></th></tr></thead>
+                <tbody>{suspicious_rows}</tbody>
+              </table>
             </section>
             <section>
               <h2>Styles</h2>
@@ -417,21 +525,22 @@ class AppHandler(BaseHTTPRequestHandler):
             scope = 'release_group'
         limit = int(query.get('limit', ['100'])[0] or '100')
         q = query.get('q', [''])[0].strip()
+        show_existing = query.get('show_existing', [''])[0] == '1'
 
         con = connect()
         try:
             sources = import_sources(con)
             genres = fetch_genres(con)
-            candidates = import_candidates(con, source, scope, q, limit)
+            candidates = import_candidates(con, source, scope, q, limit, show_existing)
         finally:
             con.close()
 
         source_options = ''.join(option(item, item, item == source) for item in sources)
         scope_options = ''.join(option(key, scope_label(value), key == scope) for key, value in SCOPES.items())
         genre_options = ''.join(f'<option value="{h(name)}">' for name in genres)
-        rows = ''.join(import_candidate_row(row, source, scope, genre_options) for row in candidates)
+        rows = ''.join(import_candidate_row(row, source, scope, q, limit, show_existing, genre_options) for row in candidates)
         if not rows:
-            rows = '<tr><td colspan="8">No import candidates found.</td></tr>'
+            rows = '<p class="muted">No import candidates found.</p>'
 
         content = f'''
             {self.alert(parsed)}
@@ -450,19 +559,16 @@ class AppHandler(BaseHTTPRequestHandler):
                 <label>Limit
                   <input name="limit" type="number" min="1" max="500" value="{h(limit)}">
                 </label>
+                <label class="check filter-check"><input type="checkbox" name="show_existing" value="1" {'checked' if show_existing else ''}> Show existing</label>
                 <button type="submit">Filter</button>
+              </form>
+              <form class="danger-form" method="post" action="/clear-import-source" onsubmit="return confirm('Clear all imported rows for this source? Decisions will not be deleted.');">
+                <input type="hidden" name="source" value="{h(source)}">
+                <button class="danger-button" type="submit">Clear Source</button>
               </form>
             </section>
             <section>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Tracks</th><th>Artist / Album</th><th>MusicBrainz IDs</th>
-                    <th>Genre</th><th>Grouping</th><th>Existing</th><th>Approve</th>
-                  </tr>
-                </thead>
-                <tbody>{rows}</tbody>
-              </table>
+              <div class="import-list">{rows}</div>
             </section>
             <datalist id="genres">{genre_options}</datalist>
         '''
@@ -542,6 +648,89 @@ def fetch_styles(con) -> list[tuple[str, str]]:
     ]
 
 
+def delete_style(con, style: str) -> int:
+    cur = con.execute('DELETE FROM canonical_style WHERE name = ?', (style,))
+    con.commit()
+    return cur.rowcount if cur.rowcount is not None else 0
+
+
+PROTECTED_SLASH_TERMS = (
+    'Adult Alternative Pop/Rock',
+    'Alternative Pop/Rock',
+    'Alternative/Indie Rock',
+    'Club/Dance',
+    'Comedy/Spoken',
+    'Contemporary Pop/Rock',
+    'Contemporary Singer/Songwriter',
+    'Early Pop/Rock',
+    "Jungle/Drum'n'Bass",
+    'Nashville Sound/Countrypolitan',
+    'Orchestral/Easy Listening',
+    'Pop/Rock',
+    'Psychedelic/Garage',
+    'Punk/New Wave',
+    'Singer/Songwriter',
+)
+
+
+def suspicious_styles(styles: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    return [
+        (genre, style)
+        for genre, style in styles
+        if suggested_style_split(style)
+    ]
+
+
+def suggested_style_split(style: str) -> list[str]:
+    placeholders: dict[str, str] = {}
+    text = style
+    for index, term in enumerate(sorted(PROTECTED_SLASH_TERMS, key=len, reverse=True)):
+        token = f'@@{index}@@'
+        if term in text:
+            placeholders[token] = term
+            text = text.replace(term, token)
+    if '/' not in text and ',' not in text:
+        return []
+    raw_parts = []
+    for part in text.replace(',', '/').split('/'):
+        part = part.strip()
+        if not part:
+            continue
+        for token, term in placeholders.items():
+            part = part.replace(token, term)
+        raw_parts.append(part)
+    parts = unique_names(raw_parts)
+    if len(parts) <= 1 or parts == [style]:
+        return []
+    return parts
+
+
+def vocabulary_cleanup_row(genre: str, style: str) -> str:
+    parts = '; '.join(suggested_style_split(style))
+    return f'''
+      <tr>
+        <td>{h(genre)}</td>
+        <td>{h(style)}</td>
+        <td>
+          <form id="{h('split-' + style)}" method="post" action="/split-style">
+            <input type="hidden" name="genre" value="{h(genre)}">
+            <input type="hidden" name="style" value="{h(style)}">
+            <input name="parts" value="{h(parts)}">
+          </form>
+        </td>
+        <td>
+          <div class="row-actions">
+            <button form="{h('split-' + style)}" type="submit">Split</button>
+            <form method="post" action="/delete-style" onsubmit="return confirm('Delete this vocabulary style? Existing decisions are not edited.');">
+              <input type="hidden" name="style" value="{h(style)}">
+              <button class="link" type="submit">Delete</button>
+            </form>
+          </div>
+        </td>
+      </tr>
+    '''
+
+
 def fetch_decision(con, scope: str, mbid: str) -> dict | None:
     if scope not in SCOPES or not mbid:
         return None
@@ -575,7 +764,7 @@ def decision_counts(con) -> dict[str, int]:
     }
 
 
-def recent_decisions(con, limit: int, scope_filter: str = 'all') -> list[dict]:
+def recent_decisions(con, limit: int, scope_filter: str = 'all', query: str = '') -> list[dict]:
     selects = []
     scopes = SCOPES.items()
     if scope_filter != 'all' and scope_filter in SCOPES:
@@ -594,16 +783,38 @@ def recent_decisions(con, limit: int, scope_filter: str = 'all') -> list[dict]:
             JOIN canonical_genre cg ON cg.id = d.normalized_genre_id
             '''
         )
+    sql_limit = max(limit, 1000) if query else limit
     sql = ' UNION ALL '.join(selects) + ' ORDER BY updated_at DESC LIMIT ?'
-    decisions = [dict(row) for row in con.execute(sql, (limit,))]
+    decisions = [dict(row) for row in con.execute(sql, (sql_limit,))]
     for row in decisions:
-        row['display_name'] = decision_display_name(con, str(row['scope']), str(row['mbid']))
+        names = decision_display_names(con, str(row['scope']), str(row['mbid']))
+        row['display_name'] = names[0] if names else ''
+        row['alternate_names'] = names[1:]
+    if query:
+        needle = query.casefold()
+        decisions = [
+            row for row in decisions
+            if needle in decision_search_text(row).casefold()
+        ][:limit]
     return decisions
 
 
+def decision_search_text(row: dict) -> str:
+    alternate_names = ' '.join(str(name) for name in row.get('alternate_names', []))
+    return ' '.join(
+        str(row.get(key) or '')
+        for key in ('scope_label', 'mbid', 'genre', 'styles', 'display_name')
+    ) + ' ' + alternate_names
+
+
 def decision_display_name(con, scope: str, mbid: str) -> str:
+    names = decision_display_names(con, scope, mbid)
+    return names[0] if names else ''
+
+
+def decision_display_names(con, scope: str, mbid: str, limit: int = 5) -> list[str]:
     if not mbid:
-        return ''
+        return []
     if scope == 'artist':
         row = con.execute(
             '''
@@ -631,9 +842,9 @@ def decision_display_name(con, scope: str, mbid: str) -> str:
             ''',
             (mbid, mbid, mbid),
         ).fetchone()
-        return str(row['name'] or '') if row else ''
+        return [str(row['name'] or '')] if row else []
     if scope == 'release_group':
-        row = con.execute(
+        rows = con.execute(
             '''
             SELECT
                 COALESCE(NULLIF(albumartist, ''), NULLIF(artist, '')) AS artist_name,
@@ -643,13 +854,13 @@ def decision_display_name(con, scope: str, mbid: str) -> str:
             WHERE musicbrainz_releasegroupid = ?
             GROUP BY artist_name, album
             ORDER BY seen DESC, artist_name, album
-            LIMIT 1
+            LIMIT ?
             ''',
-            (mbid,),
-        ).fetchone()
-        return joined_name(row, 'artist_name', 'album') if row else ''
+            (mbid, limit),
+        ).fetchall()
+        return unique_names(joined_name(row, 'artist_name', 'album') for row in rows)
     if scope == 'release':
-        row = con.execute(
+        rows = con.execute(
             '''
             SELECT
                 COALESCE(NULLIF(albumartist, ''), NULLIF(artist, '')) AS artist_name,
@@ -659,25 +870,38 @@ def decision_display_name(con, scope: str, mbid: str) -> str:
             WHERE musicbrainz_albumid = ?
             GROUP BY artist_name, album
             ORDER BY seen DESC, artist_name, album
-            LIMIT 1
+            LIMIT ?
             ''',
-            (mbid,),
-        ).fetchone()
-        return joined_name(row, 'artist_name', 'album') if row else ''
+            (mbid, limit),
+        ).fetchall()
+        return unique_names(joined_name(row, 'artist_name', 'album') for row in rows)
     if scope == 'recording':
-        row = con.execute(
+        rows = con.execute(
             '''
             SELECT artist, title, COUNT(*) AS seen
             FROM library_tag_import
             WHERE musicbrainz_recordingid = ?
             GROUP BY artist, title
             ORDER BY seen DESC, artist, title
-            LIMIT 1
+            LIMIT ?
             ''',
-            (mbid,),
-        ).fetchone()
-        return joined_name(row, 'artist', 'title') if row else ''
-    return ''
+            (mbid, limit),
+        ).fetchall()
+        return unique_names(joined_name(row, 'artist', 'title') for row in rows)
+    return []
+
+
+def unique_names(names) -> list[str]:
+    result = []
+    seen = set()
+    for name in names:
+        clean_name = str(name or '').strip()
+        key = clean_name.casefold()
+        if not clean_name or key in seen:
+            continue
+        seen.add(key)
+        result.append(clean_name)
+    return result
 
 
 def joined_name(row, first_key: str, second_key: str) -> str:
@@ -700,7 +924,7 @@ def import_sources(con) -> list[str]:
     return [str(row['import_source']) for row in rows] or ['main_library']
 
 
-def import_candidates(con, source: str, scope: str, query: str, limit: int) -> list[dict]:
+def import_candidates(con, source: str, scope: str, query: str, limit: int, show_existing: bool = False) -> list[dict]:
     where = [
         'import_source = ?',
         "raw_genre != ''",
@@ -765,7 +989,15 @@ def import_candidates(con, source: str, scope: str, query: str, limit: int) -> l
                 'artist': row['artist'] or '',
                 'album': row['album'] or '',
                 'title': row['title'] or '',
-                'artist_mbid': row['musicbrainz_albumartistid'] or row['musicbrainz_releaseartistid'] or row['musicbrainz_artistid'] or '',
+                'album_artist_mbid': row['musicbrainz_albumartistid'] or '',
+                'release_artist_mbid': row['musicbrainz_releaseartistid'] or '',
+                'track_artist_mbid': row['musicbrainz_artistid'] or '',
+                'artist_mbid': mbid if scope == 'artist' else (
+                    row['musicbrainz_albumartistid']
+                    or row['musicbrainz_releaseartistid']
+                    or row['musicbrainz_artistid']
+                    or ''
+                ),
                 'release_group_mbid': row['musicbrainz_releasegroupid'] or '',
                 'release_mbid': row['musicbrainz_albumid'] or '',
                 'recording_mbid': row['musicbrainz_recordingid'] or '',
@@ -777,6 +1009,8 @@ def import_candidates(con, source: str, scope: str, query: str, limit: int) -> l
     result = []
     for item in candidates.values():
         item['exists'] = item['mbid'] in existing
+        if item['exists'] and not show_existing:
+            continue
         result.append(item)
     result.sort(
         key=lambda item: (
@@ -804,6 +1038,13 @@ def existing_decision_keys(con, scope: str) -> set[str]:
 
 def decision_row(row: dict, with_edit: bool = False) -> str:
     edit = ''
+    names = [str(name) for name in row.get('alternate_names', []) if name]
+    name_hint = ''
+    if names:
+        visible = '; '.join(names[:3])
+        more = len(names) - 3
+        suffix = f' (+{more} more)' if more > 0 else ''
+        name_hint = f'<span class="hint">Also: {h(visible)}{h(suffix)}</span>'
     if with_edit:
         edit = f'''
           <div class="row-actions">
@@ -818,7 +1059,7 @@ def decision_row(row: dict, with_edit: bool = False) -> str:
     return f'''
       <tr>
         <td>{scope_badge(str(row.get('scope', '')))}</td>
-        <td>{h(row.get('display_name') or 'Unknown')}</td>
+        <td>{h(row.get('display_name') or 'Unknown')}{name_hint}</td>
         <td><code>{h(row.get('mbid'))}</code></td>
         <td>{h(row.get('genre'))}</td>
         <td>{h(row.get('styles'))}</td>
@@ -838,9 +1079,19 @@ def scope_badge(scope: str) -> str:
     )
 
 
-def import_candidate_row(row: dict, source: str, scope: str, genre_options: str) -> str:
+def import_candidate_row(
+    row: dict,
+    source: str,
+    scope: str,
+    query: str,
+    limit: int,
+    show_existing: bool,
+    genre_options: str,
+) -> str:
     existing = 'Yes' if row.get('exists') else ''
     disabled = 'disabled' if row.get('exists') else ''
+    form_id = import_form_id(row, scope)
+    target_options = import_target_options(row, scope)
     label = (
         f'<strong>{h(row.get("albumartist") or row.get("artist"))}</strong>'
         f'<br>{h(row.get("album"))}'
@@ -848,32 +1099,170 @@ def import_candidate_row(row: dict, source: str, scope: str, genre_options: str)
     if scope in ('recording', 'track'):
         label += f'<br><span class="muted">{h(row.get("title"))}</span>'
     ids = import_id_block(row, scope)
+    status = (
+        f'<a class="badge" href="/decisions?scope={h(scope)}&mbid={h(row.get("mbid"))}">Existing</a>'
+        if existing else ''
+    )
     return f'''
-      <tr>
-        <td>{h(row.get('tracks'))}</td>
-        <td>{label}</td>
-        <td>{ids}</td>
-        <td>
-          <form method="post" action="/approve-import" class="inline-edit">
-            <input type="hidden" name="source" value="{h(source)}">
-            <input type="hidden" name="scope" value="{h(scope)}">
-            <input type="hidden" name="mbid" value="{h(row.get('mbid'))}">
-            <input name="genre" list="genres" value="{h(row.get('genre'))}" {disabled}>
-        </td>
-        <td><textarea name="styles" rows="3" {disabled}>{h(row.get('styles'))}</textarea></td>
-        <td>{existing}</td>
-        <td><button type="submit" {disabled}>Approve</button></td>
-          </form>
-      </tr>
+      <article class="import-card">
+        <div class="import-summary">
+          <div class="track-count">{h(row.get('tracks'))}<span>tracks</span></div>
+          <div>{label}</div>
+          <div class="approve-actions">
+            {status}
+            <form id="{h(form_id)}" method="post" action="/approve-import">
+              <input type="hidden" name="source" value="{h(source)}">
+              <input type="hidden" name="scope" value="{h(scope)}">
+              <input type="hidden" name="return_scope" value="{h(scope)}">
+              <input type="hidden" name="q" value="{h(query)}">
+              <input type="hidden" name="limit" value="{h(limit)}">
+              <input type="hidden" name="show_existing" value="{h('1' if show_existing else '')}">
+              <input type="hidden" name="mbid" value="{h(row.get('mbid'))}">
+              <button type="submit" {disabled}>Approve</button>
+            </form>
+            <form method="post" action="/dismiss-import" onsubmit="return confirm('Dismiss this import candidate? This only removes staging rows.');">
+              <input type="hidden" name="source" value="{h(source)}">
+              <input type="hidden" name="scope" value="{h(scope)}">
+              <input type="hidden" name="q" value="{h(query)}">
+              <input type="hidden" name="limit" value="{h(limit)}">
+              <input type="hidden" name="show_existing" value="{h('1' if show_existing else '')}">
+              <input type="hidden" name="mbid" value="{h(row.get('mbid'))}">
+              <input type="hidden" name="genre" value="{h(row.get('genre'))}">
+              <input type="hidden" name="styles" value="{h(row.get('styles'))}">
+              <button class="secondary-button" type="submit">Dismiss</button>
+            </form>
+          </div>
+        </div>
+        <div class="import-fields">
+          <label class="compact-label">Approve Target
+            <select name="target" form="{h(form_id)}" {disabled}>{target_options}</select>
+          </label>
+          <label class="compact-label">Genre
+            <input name="genre" form="{h(form_id)}" list="genres" value="{h(row.get('genre'))}" {disabled}>
+          </label>
+          <div class="id-panel">{ids}</div>
+        </div>
+        <label class="compact-label grouping-editor">Grouping
+          <textarea name="styles" form="{h(form_id)}" rows="5" {disabled}>{h(row.get('styles'))}</textarea>
+        </label>
+      </article>
     '''
 
 
+def import_form_id(row: dict, scope: str) -> str:
+    base = f'{scope}-{row.get("mbid", "")}-{row.get("genre", "")}-{row.get("styles", "")}'
+    return 'import-' + ''.join(char if char.isalnum() else '-' for char in base)[:80]
+
+
+def import_target_options(row: dict, selected_scope: str) -> str:
+    options: list[tuple[str, str, str]] = []
+    add_target_options(options, 'artist', 'Artist', row.get('album_artist_mbid'))
+    add_target_options(options, 'artist', 'Artist', row.get('release_artist_mbid'))
+    add_target_options(options, 'artist', 'Artist', row.get('track_artist_mbid'))
+    add_target_options(options, 'release_group', 'Release Group', row.get('release_group_mbid'))
+    add_target_options(options, 'release', 'Album/Release', row.get('release_mbid'))
+    add_target_options(options, 'recording', 'Track', row.get('recording_mbid'))
+
+    seen: set[tuple[str, str]] = set()
+    unique = []
+    for scope, label, mbid in options:
+        key = (scope, mbid)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append((scope, label, mbid))
+
+    selected_value = f'{selected_scope}|{row.get("mbid")}'
+    return ''.join(
+        option(f'{scope}|{mbid}', f'{label}: {mbid}', f'{scope}|{mbid}' == selected_value)
+        for scope, label, mbid in unique
+    )
+
+
+def import_return_path(form: dict[str, str]) -> str:
+    source = clean(form.get('source', ''))
+    scope = clean(form.get('scope', 'release_group'))
+    query = clean(form.get('q', ''))
+    limit = clean(form.get('limit', '100')) or '100'
+    params = {
+        'source': source,
+        'scope': scope if scope in SCOPES else 'release_group',
+        'limit': limit,
+    }
+    if query:
+        params['q'] = query
+    if clean(form.get('show_existing', '')) == '1':
+        params['show_existing'] = '1'
+    return f'/imports?{urlencode(params)}'
+
+
+def delete_import_candidate(
+    con,
+    source: str,
+    scope: str,
+    mbid: str,
+    genre: str,
+    styles: str,
+) -> int:
+    rows = con.execute(
+        '''
+        SELECT
+            id,
+            raw_genre,
+            raw_style,
+            raw_grouping,
+            musicbrainz_artistid,
+            musicbrainz_albumartistid,
+            musicbrainz_releaseartistid,
+            musicbrainz_albumid,
+            musicbrainz_releasegroupid,
+            musicbrainz_recordingid
+        FROM library_tag_import
+        WHERE import_source = ?
+        ''',
+        (source,),
+    ).fetchall()
+    ids = []
+    for row in rows:
+        if taxonomy.target_mbid_for_scope(row, scope) != mbid:
+            continue
+        row_genre = '; '.join(split_values(row['raw_genre']))
+        row_styles = '; '.join(split_values(row['raw_grouping'] or row['raw_style']))
+        if genre and row_genre != genre:
+            continue
+        if styles and row_styles != styles:
+            continue
+        ids.append(row['id'])
+    if not ids:
+        return 0
+    con.executemany('DELETE FROM library_tag_import WHERE id = ?', [(item,) for item in ids])
+    con.commit()
+    return len(ids)
+
+
+def add_target_options(options: list[tuple[str, str, str]], scope: str, label: str, value: object) -> None:
+    for mbid in split_mbid_values(str(value or '')):
+        options.append((scope, label, mbid))
+
+
 def import_id_block(row: dict, selected_scope: str) -> str:
-    items = (
-        ('artist', 'Artist', row.get('artist_mbid')),
-        ('release_group', 'Release Group', row.get('release_group_mbid')),
-        ('release', 'Album/Release', row.get('release_mbid')),
-        ('recording', 'Track', row.get('recording_mbid')),
+    items = []
+    if selected_scope == 'artist' and row.get('mbid'):
+        items.append(('artist', 'Artist Decision Target', row.get('mbid')))
+    else:
+        items.extend(
+            (
+                ('album_artist', 'Album Artist', row.get('album_artist_mbid')),
+                ('release_artist', 'Release Artist', row.get('release_artist_mbid')),
+                ('track_artist', 'Track Artist', row.get('track_artist_mbid')),
+            )
+        )
+    items.extend(
+        (
+            ('release_group', 'Release Group', row.get('release_group_mbid')),
+            ('release', 'Album/Release', row.get('release_mbid')),
+            ('recording', 'Track', row.get('recording_mbid')),
+        )
     )
     parts = []
     for scope, label, value in items:
@@ -882,16 +1271,39 @@ def import_id_block(row: dict, selected_scope: str) -> str:
         selected = scope == selected_scope
         cls = 'id-line selected' if selected else 'id-line'
         marker = 'Using ' if selected else ''
-        parts.append(
-            f'<div class="{cls}"><span>{marker}{h(label)}</span><code>{h(value)}</code></div>'
-        )
+        parts.append(f'<div class="{cls}"><span>{marker}{h(label)}</span>{mbid_display(str(value))}</div>')
     if not parts:
         return '<span class="muted">No matching MBID for selected scope</span>'
     return ''.join(parts)
 
 
+def mbid_display(value: str) -> str:
+    values = split_mbid_values(value)
+    if len(values) <= 1:
+        return f'<code>{h(value)}</code>'
+    codes = ''.join(f'<code>{h(item)}</code>' for item in values)
+    return f'<div class="mbid-list">{codes}<span class="hint">multiple artist IDs</span></div>'
+
+
+def split_mbid_values(value: str) -> list[str]:
+    value = value.strip()
+    if not value:
+        return []
+    separator = ';' if ';' in value else '/' if '/' in value else ''
+    if not separator:
+        return [value]
+    return [item.strip() for item in value.split(separator) if item.strip()]
+
+
 def normalize_joined_values(value: str) -> str:
     return taxonomy.normalize_manual_list_text(value)
+
+
+def parse_import_target(value: str) -> tuple[str, str]:
+    if '|' not in value:
+        raise ValueError('Import target must include a scope and MBID.')
+    scope, mbid = value.split('|', 1)
+    return clean(scope), clean(mbid)
 
 
 CSS = r'''
@@ -946,6 +1358,16 @@ nav a.active, .button.primary, button {
   border-color: var(--accent);
   color: #fff;
 }
+.secondary-button {
+  background: #fff;
+  border-color: var(--line);
+  color: var(--text);
+}
+.danger-button {
+  background: #fff;
+  border-color: var(--danger);
+  color: var(--danger);
+}
 button:hover, .button:hover, nav a:hover { border-color: var(--accent-dark); }
 main { max-width: 1220px; margin: 0 auto; padding: 24px; }
 section, .panel {
@@ -955,7 +1377,9 @@ section, .panel {
   padding: 18px;
   margin-bottom: 18px;
 }
-.toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.toolbar, .danger-form { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.danger-form { justify-content: flex-end; margin-top: -8px; }
+.filter-check { align-self: end; margin-bottom: 8px; }
 .metrics {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -974,6 +1398,11 @@ section, .panel {
 .metric strong { display: block; font-size: 28px; margin-top: 4px; }
 .split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 18px; background: transparent; border: 0; padding: 0; }
 label { display: grid; gap: 6px; margin-bottom: 12px; font-weight: 600; }
+.compact-label {
+  color: var(--muted);
+  font-size: 12px;
+  margin-bottom: 10px;
+}
 input, select, textarea {
   width: 100%;
   border: 1px solid var(--line);
@@ -990,6 +1419,63 @@ table { width: 100%; border-collapse: collapse; }
 th, td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: top; }
 th { color: var(--muted); font-size: 13px; font-weight: 650; }
 code { font-family: Consolas, monospace; font-size: 13px; }
+.import-list {
+  display: grid;
+  gap: 14px;
+}
+.import-card {
+  border-bottom: 1px solid var(--line);
+  display: grid;
+  gap: 14px;
+  padding: 0 0 16px;
+}
+.import-card:last-child { border-bottom: 0; padding-bottom: 0; }
+.import-summary {
+  align-items: start;
+  display: grid;
+  gap: 14px;
+  grid-template-columns: 58px minmax(220px, 1fr) auto;
+}
+.track-count {
+  color: var(--accent-dark);
+  font-size: 22px;
+  font-weight: 650;
+  line-height: 1;
+}
+.track-count span {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+.approve-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+.import-fields {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(240px, 1.2fr) minmax(180px, .8fr) minmax(280px, 1.6fr);
+}
+.import-fields select,
+.import-fields input {
+  font-size: 13px;
+}
+.grouping-editor {
+  margin-bottom: 0;
+}
+.grouping-editor textarea {
+  min-height: 118px;
+}
+.mbid-list {
+  display: grid;
+  gap: 2px;
+}
+.id-line code {
+  overflow-wrap: anywhere;
+}
 .link {
   background: transparent;
   border: 0;
@@ -1034,6 +1520,9 @@ code { font-family: Consolas, monospace; font-size: 13px; }
 @media (max-width: 760px) {
   header { align-items: flex-start; flex-direction: column; }
   .split { grid-template-columns: 1fr; }
+  .import-summary,
+  .import-fields { grid-template-columns: 1fr; }
+  .approve-actions { justify-content: flex-start; }
   table { display: block; overflow-x: auto; }
 }
 '''

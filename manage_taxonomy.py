@@ -92,7 +92,9 @@ def normalize_semicolon_text(value: str | None) -> str:
 def normalize_manual_list_text(value: str | None) -> str:
     if not value:
         return ''
-    return normalize_semicolon_text(str(value).replace(',', ';'))
+    text = str(value).replace(',', ';')
+    text = re.sub(r'[\r\n\t]+', ';', text)
+    return normalize_semicolon_text(text)
 
 
 def split_styles(value: str | None) -> list[str]:
@@ -601,12 +603,11 @@ def import_style_counts(con: sqlite3.Connection, source: str) -> dict[str, int]:
 
 def target_mbid_for_scope(row: sqlite3.Row, scope: str) -> str:
     if scope == 'artist':
-        return str(
-            row['musicbrainz_albumartistid']
-            or row['musicbrainz_releaseartistid']
-            or row['musicbrainz_artistid']
-            or ''
-        ).strip()
+        for key in ('musicbrainz_albumartistid', 'musicbrainz_releaseartistid', 'musicbrainz_artistid'):
+            value = single_mbid_value(row[key])
+            if value:
+                return value
+        return ''
     if scope in ('release', 'album'):
         return str(row['musicbrainz_albumid'] or '').strip()
     if scope == 'release_group':
@@ -614,6 +615,15 @@ def target_mbid_for_scope(row: sqlite3.Row, scope: str) -> str:
     if scope in ('recording', 'track'):
         return str(row['musicbrainz_recordingid'] or '').strip()
     raise SystemExit(f'Unknown scope: {scope}')
+
+
+def single_mbid_value(value: str | None) -> str:
+    value = (value or '').strip()
+    if not value:
+        return ''
+    if ';' in value or '/' in value:
+        return ''
+    return value
 
 
 def promote_imported_decisions(
