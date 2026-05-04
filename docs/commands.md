@@ -83,6 +83,7 @@ python manage_taxonomy.py --db taxonomy.db list-import-summary --source library_
 python manage_taxonomy.py --db taxonomy.db list-import-genres --source library_export --only-invalid --limit 100
 python manage_taxonomy.py --db taxonomy.db list-import-styles --source library_export --limit 100
 python manage_taxonomy.py --db taxonomy.db list-import-style-clusters --source library_export --limit 100
+python manage_taxonomy.py --db taxonomy.db list-import-contentgroups --source library_export --limit 100
 ```
 
 ## Promote Imported Tags

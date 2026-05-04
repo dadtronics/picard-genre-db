@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS library_tag_import (
     raw_genre TEXT,
     raw_style TEXT,
     raw_grouping TEXT,
+    raw_contentgroup TEXT,
     musicbrainz_artistid TEXT,
     musicbrainz_albumartistid TEXT,
     musicbrainz_releaseartistid TEXT,

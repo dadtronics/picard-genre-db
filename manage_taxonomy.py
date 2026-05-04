@@ -27,6 +27,7 @@ def ensure_schema(con: sqlite3.Connection) -> None:
         'recording_decision',
     ):
         ensure_column(con, table, 'genres_text', "TEXT NOT NULL DEFAULT ''")
+    ensure_column(con, 'library_tag_import', 'raw_contentgroup', 'TEXT')
     con.commit()
 
 
@@ -378,6 +379,7 @@ def import_library_csv(con: sqlite3.Connection, csv_path: str, source: str, repl
         'genre',
         'style',
         'grouping',
+        'contentgroup',
         'musicbrainz_artistid',
         'musicbrainz_albumartistid',
         'musicbrainz_releaseartistid',
@@ -395,11 +397,11 @@ def import_library_csv(con: sqlite3.Connection, csv_path: str, source: str, repl
                 '''
                 INSERT INTO library_tag_import(
                     import_source, file_path, title, artist, album, albumartist, date,
-                    raw_genre, raw_style, raw_grouping,
+                    raw_genre, raw_style, raw_grouping, raw_contentgroup,
                     musicbrainz_artistid, musicbrainz_albumartistid, musicbrainz_releaseartistid,
                     musicbrainz_albumid, musicbrainz_releasegroupid, musicbrainz_recordingid,
                     musicbrainz_trackid
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(import_source, file_path) DO UPDATE SET
                     title=excluded.title,
                     artist=excluded.artist,
@@ -409,6 +411,7 @@ def import_library_csv(con: sqlite3.Connection, csv_path: str, source: str, repl
                     raw_genre=excluded.raw_genre,
                     raw_style=excluded.raw_style,
                     raw_grouping=excluded.raw_grouping,
+                    raw_contentgroup=excluded.raw_contentgroup,
                     musicbrainz_artistid=excluded.musicbrainz_artistid,
                     musicbrainz_albumartistid=excluded.musicbrainz_albumartistid,
                     musicbrainz_releaseartistid=excluded.musicbrainz_releaseartistid,
@@ -429,6 +432,7 @@ def import_library_csv(con: sqlite3.Connection, csv_path: str, source: str, repl
                     values['genre'],
                     values['style'],
                     values['grouping'],
+                    values['contentgroup'],
                     values['musicbrainz_artistid'],
                     values['musicbrainz_albumartistid'],
                     values['musicbrainz_releaseartistid'],
@@ -599,6 +603,49 @@ def import_style_counts(con: sqlite3.Connection, source: str) -> dict[str, int]:
         for style in split_semicolon_values(raw_value):
             counts[style] = counts.get(style, 0) + 1
     return counts
+
+
+def contentgroup_report(con: sqlite3.Connection, source: str, limit: int) -> None:
+    rows = []
+    for row in con.execute(
+        '''
+        SELECT file_path, artist, album, title, raw_grouping, raw_contentgroup
+        FROM library_tag_import
+        WHERE import_source = ?
+          AND COALESCE(raw_contentgroup, '') != ''
+        ORDER BY albumartist, album, title, file_path
+        ''',
+        (source,),
+    ):
+        grouping = normalize_semicolon_text(row['raw_grouping'])
+        contentgroup = normalize_semicolon_text(row['raw_contentgroup'])
+        if grouping and contentgroup and grouping == contentgroup:
+            status = 'duplicate'
+        elif grouping and contentgroup:
+            status = 'conflict'
+        else:
+            status = 'contentgroup_only'
+        rows.append({
+            'status': status,
+            'artist': row['artist'],
+            'album': row['album'],
+            'title': row['title'],
+            'grouping': grouping,
+            'contentgroup': contentgroup,
+            'path': row['file_path'],
+        })
+    if not rows:
+        print('No contentgroup rows.')
+        return
+    counts: dict[str, int] = {}
+    for row in rows:
+        counts[row['status']] = counts.get(row['status'], 0) + 1
+    print('Contentgroup summary:')
+    for status in ('contentgroup_only', 'duplicate', 'conflict'):
+        print(f'  {status}: {counts.get(status, 0)}')
+    print('\nRows:')
+    for row in rows[:limit]:
+        print(row)
 
 
 def target_mbid_for_scope(row: sqlite3.Row, scope: str) -> str:
@@ -1003,6 +1050,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument('--source', default='library_export')
     p.add_argument('--limit', type=int, default=100)
 
+    p = sub.add_parser('list-import-contentgroups')
+    p.add_argument('--source', default='library_export')
+    p.add_argument('--limit', type=int, default=100)
+
     p = sub.add_parser('promote-imported-decisions')
     p.add_argument('--source', default='library_export')
     p.add_argument(
@@ -1128,6 +1179,8 @@ def main() -> int:
             list_import_styles(con, args.source, args.limit)
         elif args.command == 'list-import-style-clusters':
             list_import_style_clusters(con, args.source, args.limit)
+        elif args.command == 'list-import-contentgroups':
+            contentgroup_report(con, args.source, args.limit)
         elif args.command == 'promote-imported-decisions':
             promote_imported_decisions(
                 con,

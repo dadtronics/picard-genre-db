@@ -8,7 +8,7 @@ The short version:
 2. `taxonomy.db` stores your canonical genres, styles, aliases, and decisions.
 3. The Picard plugin can read `taxonomy.db` directly when Picard has `sqlite3`.
 4. If Picard lacks `sqlite3`, the plugin falls back to `taxonomy.json`.
-5. The Picard plugin writes normalized `genre`, `style`, and `grouping`.
+5. The Picard plugin writes normalized `genre` and `grouping`.
 
 ## Start Here
 
@@ -26,6 +26,7 @@ The short version:
 - Explicit DB decisions overwrite Picard metadata by default; alias mappings only fill blanks.
 - Picard tries `taxonomy.db` first when `sqlite3` is available, then falls back to `taxonomy.json`.
 - `grouping` is the main style/grouping tag used for saved files.
+- The app and DB store multiple values as semicolon-separated text; the Picard plugin writes them to Picard metadata as multi-value lists.
 
 ## Core Loop
 
