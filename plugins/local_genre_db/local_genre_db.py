@@ -23,8 +23,9 @@ TAXONOMY_JSON_PATH = os.path.expanduser('~/taxonomy.json')
 PREFER_SQLITE = True
 OVERWRITE_EXISTING = False
 OVERWRITE_WITH_DECISIONS = True
-WRITE_STYLE_TAG = True
+WRITE_STYLE_TAG = False
 WRITE_GROUPING_TAG = True
+REMOVE_DUPLICATE_STYLE_TAG = True
 LEARN_FROM_METADATA = True
 LEARN_DEFAULT_SCOPE = 'artist'
 
@@ -125,7 +126,11 @@ def _append_pending_decision(
     if not LEARN_FROM_METADATA:
         return
     genre = _get_tag(metadata, 'genre', '').strip()
-    styles = _get_tag(metadata, 'grouping', '').strip() or _get_tag(metadata, 'style', '').strip()
+    styles = (
+        _get_tag(metadata, 'grouping', '').strip() or
+        _get_tag(metadata, 'contentgroup', '').strip() or
+        _get_tag(metadata, 'style', '').strip()
+    )
     if not genre or not styles:
         return
     scope, mbid = _pending_target(
@@ -246,12 +251,27 @@ def _get_tag(metadata, name: str, default: str = '') -> str:
 
 
 def _set_tag(metadata, name: str, value: str) -> None:
-    metadata[name] = value
+    values = _split_semicolon(value)
+    metadata[name] = values if values else value
+
+
+def _delete_tag(metadata, name: str) -> bool:
+    try:
+        if name in metadata:
+            del metadata[name]
+            return True
+    except Exception:
+        pass
+    return False
 
 
 def _should_write(metadata, tag_name: str, force: bool = False) -> bool:
     current = _get_tag(metadata, tag_name, '')
     return force or OVERWRITE_EXISTING or not current.strip()
+
+
+def _same_semicolon_values(left: str, right: str) -> bool:
+    return _split_semicolon(left) == _split_semicolon(right)
 
 
 def _split_semicolon(value: str) -> List[str]:
@@ -354,6 +374,8 @@ def _apply_metadata(metadata, decision) -> dict:
         'wrote_genre': False,
         'wrote_style': False,
         'wrote_grouping': False,
+        'removed_style': False,
+        'removed_contentgroup': False,
     }
 
     if genre and _should_write(metadata, 'genre', force):
@@ -365,6 +387,15 @@ def _apply_metadata(metadata, decision) -> dict:
     if WRITE_GROUPING_TAG and styles and _should_write(metadata, 'grouping', force):
         _set_tag(metadata, 'grouping', styles)
         result['wrote_grouping'] = True
+    if (
+        REMOVE_DUPLICATE_STYLE_TAG and
+        not WRITE_STYLE_TAG and
+        styles and
+        _same_semicolon_values(_get_tag(metadata, 'style', ''), styles)
+    ):
+        result['removed_style'] = _delete_tag(metadata, 'style')
+    if styles and _same_semicolon_values(_get_tag(metadata, 'contentgroup', ''), styles):
+        result['removed_contentgroup'] = _delete_tag(metadata, 'contentgroup')
     return result
 
 
@@ -424,7 +455,10 @@ def _process_metadata(metadata, entity_type: str) -> None:
             f'styles={(applied or {}).get("styles", "")!r} '
             f'force={int(bool((applied or {}).get("force")))} '
             f'wrote_genre={int(bool((applied or {}).get("wrote_genre")))} '
-            f'wrote_grouping={int(bool((applied or {}).get("wrote_grouping")))}'
+            f'wrote_style={int(bool((applied or {}).get("wrote_style")))} '
+            f'wrote_grouping={int(bool((applied or {}).get("wrote_grouping")))} '
+            f'removed_style={int(bool((applied or {}).get("removed_style")))} '
+            f'removed_contentgroup={int(bool((applied or {}).get("removed_contentgroup")))}'
         )
     except Exception as exc:
         _append_file_log(f'processing_error={exc!r}')
