@@ -972,7 +972,7 @@ def import_candidates(con, source: str, scope: str, query: str, limit: int, show
         mbid = taxonomy.target_mbid_for_scope(row, scope)
         if not mbid:
             continue
-        genre = '; '.join(split_values(row['raw_genre']))
+        genre = normalized_import_genre(con, row['raw_genre'])
         styles = '; '.join(split_values(row['raw_grouping'] or row['raw_style']))
         if not genre or not styles:
             continue
@@ -1226,7 +1226,7 @@ def delete_import_candidate(
     for row in rows:
         if taxonomy.target_mbid_for_scope(row, scope) != mbid:
             continue
-        row_genre = '; '.join(split_values(row['raw_genre']))
+        row_genre = normalized_import_genre(con, row['raw_genre'])
         row_styles = '; '.join(split_values(row['raw_grouping'] or row['raw_style']))
         if genre and row_genre != genre:
             continue
@@ -1297,6 +1297,16 @@ def split_mbid_values(value: str) -> list[str]:
 
 def normalize_joined_values(value: str) -> str:
     return taxonomy.normalize_manual_list_text(value)
+
+
+def normalized_import_genre(con, value: str | None) -> str:
+    raw = taxonomy.normalize_manual_list_text(value)
+    if not raw:
+        return ''
+    try:
+        return taxonomy.normalize_genre_text(con, raw)
+    except BaseException:
+        return raw
 
 
 def parse_import_target(value: str) -> tuple[str, str]:

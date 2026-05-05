@@ -1,41 +1,112 @@
 # Commands
 
-## Local App
+This page is a command cookbook. For normal editing, use the local app first.
+
+## Start The App
 
 ```powershell
 python app.py
 ```
 
-The app is the easier path for normal decision editing. The commands below are
-still useful for batch work and troubleshooting.
+Default URL:
 
-## Genres And Styles
-
-```powershell
-python manage_taxonomy.py --db taxonomy.db add-genre "Electronic"
-python manage_taxonomy.py --db taxonomy.db add-style "Electronic" "Deep House"
-python manage_taxonomy.py --db taxonomy.db list-genres
-python manage_taxonomy.py --db taxonomy.db list-styles
+```text
+http://127.0.0.1:8686
 ```
 
-## Decisions
+Use the app for:
 
-Artist:
+- adding and editing decisions
+- reviewing imports
+- cleaning suspicious vocabulary
+- refreshing `taxonomy.json`
+
+## Scan And Import A Library
+
+Scan tags into CSV:
+
+```powershell
+python export_library_tags.py --music-dir "D:\Music" --out imports/library_export.csv
+```
+
+Import the CSV into the staging table:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db import-library-csv imports/library_export.csv --source library_export --replace
+```
+
+Then review in the app:
+
+```text
+http://127.0.0.1:8686/imports
+```
+
+## Audit Imported Tags
+
+Summary:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db list-import-summary --source library_export --limit 25
+```
+
+Invalid or unexpected genres:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db list-import-genres --source library_export --only-invalid --limit 100
+```
+
+Raw grouping/style values:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db list-import-styles --source library_export --limit 100
+```
+
+Likely duplicate style spellings:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db list-import-style-clusters --source library_export --limit 100
+```
+
+Legacy `contentgroup` cases:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db list-import-contentgroups --source library_export --limit 100
+```
+
+Statuses:
+
+- `contentgroup_only`: file has contentgroup but no grouping
+- `duplicate`: contentgroup and grouping match
+- `conflict`: both exist and differ
+
+## Refresh Picard Runtime JSON
+
+Use this after CLI changes. The app refreshes JSON automatically after saves.
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db export-plugin-json --out taxonomy.json
+```
+
+## Add Decisions From CLI
+
+Prefer the app unless batch work is faster.
+
+Artist default:
 
 ```powershell
 python manage_taxonomy.py --db taxonomy.db decide-artist `
   --artist-mbid "ARTIST_MBID" `
   --genre "Electronic" `
-  --styles "House"
+  --styles "House; Techno"
 ```
 
-Album default:
+Release group default:
 
 ```powershell
 python manage_taxonomy.py --db taxonomy.db decide-release-group `
   --release-group-mbid "RELEASE_GROUP_MBID" `
   --genre "Electronic" `
-  --styles "Deep House; Garage House"
+  --styles "Big Beat; Club/Dance; House"
 ```
 
 Exact release:
@@ -43,26 +114,17 @@ Exact release:
 ```powershell
 python manage_taxonomy.py --db taxonomy.db decide-release `
   --release-mbid "RELEASE_MBID" `
-  --genre "Electronic" `
-  --styles "Deep House"
+  --genre "Stage & Screen; Pop/Rock" `
+  --styles "Soundtracks; Alternative Pop/Rock"
 ```
 
-Track:
+Track override:
 
 ```powershell
 python manage_taxonomy.py --db taxonomy.db decide-recording `
   --recording-mbid "RECORDING_MBID" `
   --genre "Rap" `
   --styles "East Coast Rap"
-```
-
-Multi-genre:
-
-```powershell
-python manage_taxonomy.py --db taxonomy.db decide-artist `
-  --artist-mbid "ARTIST_MBID" `
-  --genre "Pop/Rock; Reggae" `
-  --styles "Contemporary Pop/Rock; Contemporary Reggae; Reggae-Pop"
 ```
 
 ## List Decisions
@@ -74,19 +136,40 @@ python manage_taxonomy.py --db taxonomy.db list-release-decisions
 python manage_taxonomy.py --db taxonomy.db list-recording-decisions
 ```
 
-## Import And Audit Library Tags
+## Vocabulary
 
 ```powershell
-python export_library_tags.py --music-dir "D:\Music" --out imports/library_export.csv
-python manage_taxonomy.py --db taxonomy.db import-library-csv imports/library_export.csv --source library_export --replace
-python manage_taxonomy.py --db taxonomy.db list-import-summary --source library_export --limit 25
-python manage_taxonomy.py --db taxonomy.db list-import-genres --source library_export --only-invalid --limit 100
-python manage_taxonomy.py --db taxonomy.db list-import-styles --source library_export --limit 100
-python manage_taxonomy.py --db taxonomy.db list-import-style-clusters --source library_export --limit 100
-python manage_taxonomy.py --db taxonomy.db list-import-contentgroups --source library_export --limit 100
+python manage_taxonomy.py --db taxonomy.db add-genre "Electronic"
+python manage_taxonomy.py --db taxonomy.db add-style "Electronic" "Deep House"
+python manage_taxonomy.py --db taxonomy.db list-genres
+python manage_taxonomy.py --db taxonomy.db list-styles
 ```
 
-## Promote Imported Tags
+For suspicious or combined styles, use the Vocabulary page in the app.
+
+## Raw Value Mapping
+
+Map a raw genre to a canonical genre and optional style:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db map-raw-genre `
+  --raw "House" `
+  --genre "Electronic" `
+  --style "House"
+```
+
+Map a dirty style spelling to the style you want to keep:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db map-raw-style `
+  --raw "Old School Rap" `
+  --genre "Rap" `
+  --style "Old-School Rap"
+```
+
+## Promote Imported Tags From CLI
+
+The app import review is safer. Use CLI promotion only for controlled batches.
 
 Preview:
 
@@ -102,15 +185,29 @@ python manage_taxonomy.py --db taxonomy.db promote-imported-decisions --source p
 
 ## Pending Decisions
 
-These only work when the plugin sees the values during metadata processing.
+These only work when the Picard plugin sees the values during metadata processing.
 
 ```powershell
 python manage_taxonomy.py --db taxonomy.db list-pending-decisions
 python manage_taxonomy.py --db taxonomy.db import-pending-decisions
 ```
 
-## Refresh Picard JSON
+## Maintenance
+
+Normalize decision text:
 
 ```powershell
-python manage_taxonomy.py --db taxonomy.db export-plugin-json --out taxonomy.json
+python manage_taxonomy.py --db taxonomy.db clean-decision-text
+```
+
+Inspect plugin run logs stored in the DB:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db list-plugin-runs --limit 25
+```
+
+Clear plugin run logs:
+
+```powershell
+python manage_taxonomy.py --db taxonomy.db clear-plugin-runs
 ```
