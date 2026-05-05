@@ -55,12 +55,61 @@ def get_genre_id(con: sqlite3.Connection, name: str) -> int:
     return int(row['id'])
 
 
+BUILTIN_GENRE_ALIASES = {
+    'hip hop': 'Rap',
+    'hip-hop': 'Rap',
+    'hiphop': 'Rap',
+    'electronica': 'Electronic',
+}
+
+
+def resolve_genre_name(con: sqlite3.Connection, name: str) -> str:
+    name = sanitize_value(name)
+    row = con.execute(
+        'SELECT name FROM canonical_genre WHERE name = ?', (name,)
+    ).fetchone()
+    if row:
+        return str(row['name'])
+
+    alias = con.execute(
+        '''
+        SELECT cg.name
+        FROM alias_mapping am
+        JOIN canonical_genre cg ON cg.id = am.normalized_genre_id
+        WHERE am.raw_value = ?
+        ORDER BY am.confidence DESC, am.source_name
+        LIMIT 1
+        ''',
+        (name,),
+    ).fetchone()
+    if alias:
+        return str(alias['name'])
+
+    builtin = BUILTIN_GENRE_ALIASES.get(name.casefold())
+    if builtin:
+        return builtin
+
+    raise SystemExit(f'Unknown genre: {name}')
+
+
 def normalize_genres(con: sqlite3.Connection, genres: str) -> tuple[int, str, str]:
-    names = split_semicolon_values(genres)
+    names = []
+    seen = set()
+    for raw_name in split_semicolon_values(genres):
+        name = resolve_genre_name(con, raw_name)
+        key = name.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        names.append(name)
     if not names:
         raise SystemExit('At least one genre is required.')
     genre_ids = [get_genre_id(con, name) for name in names]
     return genre_ids[0], names[0], '; '.join(names)
+
+
+def normalize_genre_text(con: sqlite3.Connection, genres: str) -> str:
+    return normalize_genres(con, genres)[2]
 
 
 def get_style_id(con: sqlite3.Connection, name: str) -> int:
