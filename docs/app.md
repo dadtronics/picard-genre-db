@@ -6,7 +6,7 @@ It uses only Python's standard library and the existing SQLite database.
 
 Start it from the project folder:
 
-```powershell
+```bash
 python app.py
 ```
 
@@ -53,21 +53,19 @@ and grouping. You can edit the genre/grouping before approving.
 
 Approving a row:
 
-1. saves the matching decision to `taxonomy.db`
-2. creates missing styles under the first genre
-3. refreshes `taxonomy.json`
-
+1. saves the matching decision to `taxonomy.db 2. creates missing styles under the first genre
+3. refreshes `taxonomy.json 
 For old library tags, review a handful at a time. Avoid bulk-approving the
 entire library until the candidates look clean.
 
 ## Run Without Opening A Browser
 
-```powershell
+```bash
 python app.py --no-open
 ```
 
 ## Custom Port
 
-```powershell
+```bash
 python app.py --port 8899
 ```

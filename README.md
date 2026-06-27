@@ -32,17 +32,14 @@ The short version:
 
 Browser UI:
 
-```powershell
+```bash
 python app.py
 ```
 
 Command line:
 
-```powershell
-python manage_taxonomy.py --db taxonomy.db decide-release-group `
-  --release-group-mbid "RELEASE_GROUP_MBID" `
-  --genre "Electronic" `
-  --styles "Electro-Techno; Techno; Club/Dance"
+```bash
+python manage_taxonomy.py --db taxonomy.db decide-release-group --release-group-mbid "RELEASE_GROUP_MBID" --genre "Electronic" --styles "Electro-Techno; Techno; Club/Dance"
 
 python manage_taxonomy.py --db taxonomy.db export-plugin-json --out taxonomy.json
 ```
