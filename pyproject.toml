@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "picard-genre-db"
+version = "0.1.0"
+description = "Local genre/style taxonomy database, web UI, and Picard plugin"
+requires-python = ">=3.9"
+license = "GPL-2.0-or-later"
+license-files = ["LICENSE"]
+# The core CLI and web UI (manage_taxonomy.py, app.py) use only the Python
+# standard library and have no runtime dependencies.
+dependencies = []
+
+[project.optional-dependencies]
+# Needed only by export_library_tags.py to read tags from audio files.
+scan = ["mutagen>=1.45"]
+# Development tooling: linting/formatting and the test suite.
+dev = ["ruff>=0.6", "pytest>=8"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+# Generated/runtime artifacts and the Picard plugin (loaded inside Picard,
+# which provides its own globals) are excluded from linting.
+extend-exclude = ["plugins"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",  # long lines are tolerated (embedded HTML/SQL strings)
+]
+
+[tool.ruff.format]
+# Match the existing codebase style so `ruff format` is non-disruptive.
+quote-style = "single"
+
+[tool.pytest.ini_options]
+# Make the top-level modules importable from tests without installation.
+pythonpath = ["."]
+testpaths = ["tests"]

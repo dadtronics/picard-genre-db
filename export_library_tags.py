@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 rb303
 from __future__ import annotations
 
 import argparse
 import csv
 import sys
 import time
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 AUDIO_EXTENSIONS = {
     '.aac',
@@ -176,8 +178,10 @@ def main() -> int:
 
     try:
         count = export_library(music_dir, out_path, args.limit, args.progress_every)
-    except ImportError:
-        raise SystemExit('Missing dependency: install mutagen with "python -m pip install mutagen"')
+    except ImportError as exc:
+        raise SystemExit(
+            'Missing dependency: install mutagen with "python -m pip install mutagen"'
+        ) from exc
 
     if args.progress_every == 0:
         print(f'Exported {count} files to {out_path}')

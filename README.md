@@ -48,3 +48,18 @@ python manage_taxonomy.py --db taxonomy.db export-plugin-json --out taxonomy.jso
 ```
 
 Reload the album in Picard, confirm the New Value column looks right, then save.
+
+## Development
+
+The core CLI and web UI use only the Python standard library. Development
+tooling (linting + tests) is declared in `pyproject.toml`:
+
+```bash
+python -m pip install -e ".[dev]"   # ruff + pytest
+ruff check .                        # lint
+pytest -q                           # run the test suite
+```
+
+`export_library_tags.py` additionally needs `mutagen` (`pip install -e ".[scan]"`).
+
+CI runs `ruff check` and `pytest` on each push/PR (see `.github/workflows/ci.yml`).

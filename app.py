@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 rb303
 from __future__ import annotations
 
 import argparse
@@ -13,9 +15,12 @@ from urllib.parse import parse_qs, urlencode, urlparse
 
 import manage_taxonomy as taxonomy
 
+DB_PATH = taxonomy.default_path('taxonomy.db')
+JSON_PATH = taxonomy.default_path('taxonomy.json')
 
-DB_PATH = 'taxonomy.db'
-JSON_PATH = 'taxonomy.json'
+# Schema setup runs once per process rather than on every request.
+_schema_lock = threading.Lock()
+_schema_ready = False
 
 SCOPES = {
     'artist': {
@@ -72,10 +77,22 @@ def first_available_port(host: str, preferred: int) -> int:
     raise SystemExit(f'No free port found from {preferred} to {preferred + 99}')
 
 
+def init_schema() -> None:
+    """Create/migrate the schema once at startup."""
+    global _schema_ready
+    with _schema_lock:
+        con = taxonomy.connect(DB_PATH)
+        try:
+            taxonomy.ensure_schema(con)
+        finally:
+            con.close()
+        _schema_ready = True
+
+
 def connect():
-    con = taxonomy.connect(DB_PATH)
-    taxonomy.ensure_schema(con)
-    return con
+    if not _schema_ready:
+        init_schema()
+    return taxonomy.connect(DB_PATH)
 
 
 def export_json(con) -> None:
@@ -104,7 +121,7 @@ class AppHandler(BaseHTTPRequestHandler):
     server_version = 'PicardGenreDB/0.1'
 
     def log_message(self, format: str, *args) -> None:
-        sys.stderr.write('%s - %s\n' % (self.address_string(), format % args))
+        sys.stderr.write(f'{self.address_string()} - {format % args}\n')
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
@@ -122,8 +139,28 @@ class AppHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self.html_response(self.render_error(exc), status=500)
 
+    def origin_ok(self) -> bool:
+        """Reject cross-site POSTs (CSRF) against this local server.
+
+        The Origin header is sent by browsers on form submissions; if it
+        is present its host must match the Host the request was sent to.
+        Requests without an Origin (e.g. curl) are allowed through, since
+        the threat model is a malicious web page in the user's browser.
+        """
+        origin = self.headers.get('Origin')
+        if not origin:
+            return True
+        host = self.headers.get('Host', '')
+        return urlparse(origin).netloc == host
+
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
+        if not self.origin_ok():
+            self.html_response(
+                self.page('Forbidden', '<p>Cross-origin request rejected.</p>'),
+                status=403,
+            )
+            return
         length = int(self.headers.get('Content-Length', '0') or '0')
         data = self.rfile.read(length).decode('utf-8')
         form = {key: values[-1] for key, values in parse_qs(data).items()}
@@ -1540,8 +1577,8 @@ code { font-family: Consolas, monospace; font-size: 13px; }
 
 def main() -> int:
     parser = argparse.ArgumentParser(description='Local web UI for Picard Genre DB')
-    parser.add_argument('--db', default='taxonomy.db')
-    parser.add_argument('--json', default='taxonomy.json')
+    parser.add_argument('--db', default=taxonomy.default_path('taxonomy.db'))
+    parser.add_argument('--json', default=taxonomy.default_path('taxonomy.json'))
     parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--port', type=int, default=8686)
     parser.add_argument('--no-open', action='store_true')
@@ -1550,6 +1587,8 @@ def main() -> int:
     global DB_PATH, JSON_PATH
     DB_PATH = args.db
     JSON_PATH = args.json
+
+    init_schema()
 
     port = first_available_port(args.host, args.port)
     server = ThreadingHTTPServer((args.host, port), AppHandler)
