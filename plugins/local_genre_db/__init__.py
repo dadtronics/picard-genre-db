@@ -2,7 +2,6 @@
 # Copyright (C) 2026 rb303
 # Local Genre DB - Picard 3.0 (plugin3/MANIFEST.toml) format.
 # See MANIFEST.toml in this folder for name/version/metadata.
-# -*- coding: utf-8 -*-
 
 import json
 import os

@@ -2,9 +2,8 @@
 
 ## Local Genre DB Is Not Listed In Picard
 
-For a zip install, make sure the zip contains `local_genre_db.py` at the top level.
-
-Restart Picard after copying the plugin.
+Make sure `local_genre_db.py` is in Picard's plugins folder, then restart Picard
+after copying the plugin.
 
 ## Picard Plugin Loads But Does Nothing
 
