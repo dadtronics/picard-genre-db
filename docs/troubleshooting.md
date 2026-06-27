@@ -13,7 +13,7 @@ plugin list, grey means installed but inactive; green means active.
 
 Check the load log:
 
-```powershell
+```bash
 Get-Content "$env:LOCALAPPDATA\MusicBrainz\Picard\plugins\local_genre_db_load.log" -Tail 50
 ```
 
@@ -33,7 +33,7 @@ If the JSON path points somewhere else, fix `taxonomy_json_path.txt`.
 
 Refresh the JSON snapshot:
 
-```powershell
+```bash
 python manage_taxonomy.py --db taxonomy.db export-plugin-json --out taxonomy.json
 ```
 
@@ -54,7 +54,7 @@ If `Grouping` exists in Original Value but is blank in New Value, do not save un
 
 Check what is actually on disk by scanning the album folder:
 
-```powershell
+```bash
 python export_library_tags.py --music-dir "D:\Music\Artist\Album" --out imports/check_album.csv
 python manage_taxonomy.py --db taxonomy.db import-library-csv imports/check_album.csv --source check_album --replace
 python manage_taxonomy.py --db taxonomy.db list-import-summary --source check_album --limit 50
@@ -71,7 +71,7 @@ will log this and fall back to `taxonomy.json`.
 
 Use:
 
-```powershell
+```bash
 python manage_taxonomy.py --db taxonomy.db export-plugin-json --out taxonomy.json
 ```
 
@@ -81,7 +81,7 @@ Manual edits typed after Picard loads metadata may not appear in the pending fil
 
 Use the scan-and-promote workflow instead:
 
-```powershell
+```bash
 python export_library_tags.py --music-dir "D:\Music\Artist\Album" --out imports/picard_edit.csv
 python manage_taxonomy.py --db taxonomy.db import-library-csv imports/picard_edit.csv --source picard_edit --replace
 python manage_taxonomy.py --db taxonomy.db promote-imported-decisions --source picard_edit --scope release_group --limit 20
