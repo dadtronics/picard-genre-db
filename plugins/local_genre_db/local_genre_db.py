@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 rb303
 PLUGIN_NAME = 'Local Genre DB'
-PLUGIN_AUTHOR = 'OpenAI'
+PLUGIN_AUTHOR = 'rb303'
 PLUGIN_DESCRIPTION = 'Apply canonical genre/style tags from a local taxonomy snapshot.'
 PLUGIN_VERSION = '0.3.0'
 PLUGIN_API_VERSIONS = [
     '2.0', '2.1', '2.2', '2.3', '2.4', '2.5', '2.6', '2.7',
     '2.8', '2.9', '2.10', '2.11', '2.12', '2.13',
 ]
-PLUGIN_LICENSE = 'MIT'
-PLUGIN_LICENSE_URL = 'https://opensource.org/licenses/MIT'
+PLUGIN_LICENSE = 'GPL-2.0-or-later'
+PLUGIN_LICENSE_URL = 'https://www.gnu.org/licenses/old-licenses/gpl-2.0.html'
 
 import json
 import os

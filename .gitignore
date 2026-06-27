@@ -1,6 +1,13 @@
 __pycache__/
 *.py[cod]
 
+# Packaging / tooling artifacts
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.venv/
+.ci-venv/
+
 # Local taxonomy/runtime data
 *.db
 *.db-*

@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: GPL-2.0-or-later
+# Copyright (C) 2026 rb303
 from __future__ import annotations
 
 import argparse
@@ -7,8 +9,28 @@ import json
 import re
 import sqlite3
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def default_path(name: str) -> str:
+    """Resolve a default data-file path relative to this script.
+
+    Keeps the CLI and web UI working regardless of the current working
+    directory, while still allowing explicit overrides via flags.
+    """
+    return str(SCRIPT_DIR / name)
+
+
+class TaxonomyError(Exception):
+    """Raised for invalid user input or unresolved taxonomy lookups.
+
+    Library functions raise this instead of ``SystemExit`` so callers
+    (the CLI, the web UI, the plugin) can decide how to surface it. The
+    CLI's ``main()`` translates it into a clean ``SystemExit``.
+    """
 
 
 def connect(db: str) -> sqlite3.Connection:
@@ -51,7 +73,7 @@ def get_genre_id(con: sqlite3.Connection, name: str) -> int:
         'SELECT id FROM canonical_genre WHERE name = ?', (name,)
     ).fetchone()
     if not row:
-        raise SystemExit(f'Unknown genre: {name}')
+        raise TaxonomyError(f'Unknown genre: {name}')
     return int(row['id'])
 
 
@@ -89,7 +111,7 @@ def resolve_genre_name(con: sqlite3.Connection, name: str) -> str:
     if builtin:
         return builtin
 
-    raise SystemExit(f'Unknown genre: {name}')
+    raise TaxonomyError(f'Unknown genre: {name}')
 
 
 def normalize_genres(con: sqlite3.Connection, genres: str) -> tuple[int, str, str]:
@@ -103,7 +125,7 @@ def normalize_genres(con: sqlite3.Connection, genres: str) -> tuple[int, str, st
         seen.add(key)
         names.append(name)
     if not names:
-        raise SystemExit('At least one genre is required.')
+        raise TaxonomyError('At least one genre is required.')
     genre_ids = [get_genre_id(con, name) for name in names]
     return genre_ids[0], names[0], '; '.join(names)
 
@@ -118,7 +140,7 @@ def get_style_id(con: sqlite3.Connection, name: str) -> int:
         'SELECT id FROM canonical_style WHERE name = ?', (name,)
     ).fetchone()
     if not row:
-        raise SystemExit(f'Unknown style: {name}')
+        raise TaxonomyError(f'Unknown style: {name}')
     return int(row['id'])
 
 
@@ -414,7 +436,7 @@ def configure_output() -> None:
 def import_library_csv(con: sqlite3.Connection, csv_path: str, source: str, replace: bool) -> None:
     path = Path(csv_path)
     if not path.exists():
-        raise SystemExit(f'CSV not found: {path}')
+        raise TaxonomyError(f'CSV not found: {path}')
     if replace:
         con.execute('DELETE FROM library_tag_import WHERE import_source = ?', (source,))
 
@@ -710,7 +732,7 @@ def target_mbid_for_scope(row: sqlite3.Row, scope: str) -> str:
         return str(row['musicbrainz_releasegroupid'] or '').strip()
     if scope in ('recording', 'track'):
         return str(row['musicbrainz_recordingid'] or '').strip()
-    raise SystemExit(f'Unknown scope: {scope}')
+    raise TaxonomyError(f'Unknown scope: {scope}')
 
 
 def single_mbid_value(value: str | None) -> str:
@@ -971,7 +993,9 @@ def load_pending_rows(pending_path: str) -> list[dict]:
             try:
                 rows.append(json.loads(line))
             except json.JSONDecodeError as exc:
-                raise SystemExit(f'Invalid JSON on {path}:{line_number}: {exc}')
+                raise TaxonomyError(
+                    f'Invalid JSON on {path}:{line_number}: {exc}'
+                ) from exc
     return rows
 
 
@@ -1042,7 +1066,7 @@ def import_pending_decisions(
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description='Manage local taxonomy DB')
-    parser.add_argument('--db', default='taxonomy.db', help='Path to SQLite DB')
+    parser.add_argument('--db', default=default_path('taxonomy.db'), help='Path to SQLite DB')
     sub = parser.add_subparsers(dest='command', required=True)
 
     p = sub.add_parser('add-genre')
@@ -1111,7 +1135,7 @@ def build_parser() -> argparse.ArgumentParser:
         default='artist',
     )
     p.add_argument('--apply', action='store_true')
-    p.add_argument('--plugin-json', default='taxonomy.json')
+    p.add_argument('--plugin-json', default=default_path('taxonomy.json'))
     p.add_argument('--limit', type=int, default=25)
 
     p = sub.add_parser('list-plugin-runs')
@@ -1122,14 +1146,14 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser('clean-decision-text')
 
     p = sub.add_parser('export-plugin-json')
-    p.add_argument('--out', default='taxonomy.json')
+    p.add_argument('--out', default=default_path('taxonomy.json'))
 
     p = sub.add_parser('list-pending-decisions')
-    p.add_argument('--pending', default='local_genre_db_pending.jsonl')
+    p.add_argument('--pending', default=default_path('local_genre_db_pending.jsonl'))
 
     p = sub.add_parser('import-pending-decisions')
-    p.add_argument('--pending', default='local_genre_db_pending.jsonl')
-    p.add_argument('--plugin-json', default='taxonomy.json')
+    p.add_argument('--pending', default=default_path('local_genre_db_pending.jsonl'))
+    p.add_argument('--plugin-json', default=default_path('taxonomy.json'))
     p.add_argument('--clear', action=argparse.BooleanOptionalAction, default=True)
 
     p = sub.add_parser('decide-artist')
@@ -1184,10 +1208,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main() -> int:
-    configure_output()
-    parser = build_parser()
-    args = parser.parse_args()
+def run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     con = connect(args.db)
     try:
         ensure_schema(con)
@@ -1245,7 +1266,7 @@ def main() -> int:
             clear_plugin_runs(con)
         elif args.command == 'clean-decision-text':
             clean_decision_text(con)
-            export_plugin_json(con, 'taxonomy.json')
+            export_plugin_json(con, default_path('taxonomy.json'))
         elif args.command == 'export-plugin-json':
             export_plugin_json(con, args.out)
         elif args.command == 'list-pending-decisions':
@@ -1329,6 +1350,17 @@ def main() -> int:
             parser.error('Unknown command')
     finally:
         con.close()
+
+
+def main() -> int:
+    configure_output()
+    parser = build_parser()
+    args = parser.parse_args()
+    try:
+        run(args, parser)
+    except TaxonomyError as exc:
+        print(f'error: {exc}', file=sys.stderr)
+        return 2
     return 0
 
 
