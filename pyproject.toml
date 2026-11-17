@@ -19,6 +19,10 @@ scan = ["mutagen>=1.45"]
 # Development tooling: linting/formatting and the test suite.
 dev = ["ruff>=0.6", "pytest>=8"]
 
+[tool.setuptools]
+# Flat layout of top-level scripts; list them so setuptools doesn't guess.
+py-modules = ["app", "bootstrap_db", "export_library_tags", "manage_taxonomy"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py314"
