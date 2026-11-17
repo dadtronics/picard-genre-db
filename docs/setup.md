@@ -48,50 +48,31 @@ when Picard's bundled Python has no `sqlite3`.
 
 ## 4. Install The Picard Plugin
 
-Copy `local_genre_db.py` (from `plugins/local_genre_db/` in your project folder)
-into Picard's plugin folder:
+The plugin lives in its own repository: [picard-local-genre-db](https://github.com/dadtronics/picard-local-genre-db).
+In Picard 3: **Options -> Plugins -> Install from URL**, enter
 
-| OS | Plugin folder |
-| --- | --- |
-| Windows | `%LOCALAPPDATA%\MusicBrainz\Picard\plugins\` |
-| Linux | `~/.config/MusicBrainz/Picard/plugins/` |
-| macOS | `~/Library/Preferences/MusicBrainz/Picard/plugins/` |
+```text
+https://github.com/dadtronics/picard-local-genre-db
+```
+
+and pick the newest `vX.Y.Z` tag in the version selector (not `main`), so
+Picard offers updates when new versions are tagged. Enable **Local Genre DB**.
 
 ## 5. Point The Plugin At Your Data
 
-The plugin now needs to find the `taxonomy.db` and `taxonomy.json` back in your
-project folder. Create two small **pointer files** directly in Picard's plugins
-folder (the folder that *contains* the plugin, not inside the plugin's own
-folder: installs and updates from GitHub replace that folder and would delete
-them). The plugin checks its own folder first, then the one above it. Each file holds a **single line: the absolute
-path** to the real file — the plugin reads only that first line, and a leading
-`~` is expanded to your home directory.
+**Options -> Plugins -> Local Genre DB**: browse to `taxonomy.db` (and
+optionally `taxonomy.json`). The status line confirms what was found, e.g.
+`287 release groups, 37 aliases`. The setting is stored in Picard's config, so
+plugin updates keep it.
 
-`taxonomy_path.txt` — points to your database. Its entire contents is one line:
+Older setups that use the `PICARD_TAXONOMY_DB` / `PICARD_TAXONOMY_JSON`
+environment variables or `taxonomy_path.txt` / `taxonomy_json_path.txt` pointer
+files in Picard's Plugins folder keep working when the setting is empty.
 
-```text
-/home/you/picard-genre-db/taxonomy.db
-```
+## 6. Try It
 
-`taxonomy_json_path.txt` — points to the snapshot. Its entire contents is one line:
-
-```text
-/home/you/picard-genre-db/taxonomy.json
-```
-
-On Windows that one line looks like `C:\path\to\picard-genre-db\taxonomy.json`
-instead. Setting both lets the plugin read SQLite when available and fall back
-to JSON otherwise.
-
-> Tip: instead of these files, set the environment variables
-> `PICARD_TAXONOMY_DB` and `PICARD_TAXONOMY_JSON` to the same paths. If set, they
-> take precedence over the pointer files.
-
-## 6. Start Picard
-
-Restart Picard, then enable **Local Genre DB** under `Options -> Plugins`.
-Reload an album to see normalized tags applied. Restart Picard again any time
-you replace the installed plugin file.
+Load an album you have a decision for. After editing decisions in the web app,
+right-click the album -> **Refresh**; no Picard restart is needed.
 
 ## Keeping The JSON Snapshot Fresh
 

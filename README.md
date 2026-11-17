@@ -6,7 +6,7 @@ The short version:
 
 1. Picard writes identity and MusicBrainz IDs.
 2. `taxonomy.db` stores your canonical genres, styles, aliases, and decisions.
-3. The Picard plugin can read `taxonomy.db` directly when Picard has `sqlite3`.
+3. The [Picard plugin](https://github.com/dadtronics/picard-local-genre-db) reads `taxonomy.db` directly.
 4. If Picard lacks `sqlite3`, the plugin falls back to `taxonomy.json`.
 5. The Picard plugin writes normalized `genre` and `grouping`.
 

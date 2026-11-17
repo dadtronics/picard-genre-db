@@ -2,39 +2,29 @@
 
 ## Local Genre DB Is Not Listed In Picard
 
-Make sure `local_genre_db.py` is in Picard's plugins folder, then restart Picard
-after copying the plugin.
+Install it from https://github.com/dadtronics/picard-local-genre-db (see setup step 4). Plugins installed while Picard runs
+may need a restart before they show up in the list.
 
 ## Picard Plugin Loads But Does Nothing
 
-In `Options -> Plugins`, make sure **Local Genre DB** is enabled. In Picard's
-plugin list, grey means installed but inactive; green means active.
+1. In `Options -> Plugins`, make sure **Local Genre DB** is enabled.
+2. Open `Options -> Plugins -> Local Genre DB` and check the status line. It
+   must say `Using ...` with your decision counts, not `Not found`.
+3. **Help -> View Debug/Error Log** shows which taxonomy the plugin loaded at
+   startup and a warning for every lookup when it can't find one.
+4. The plugin only runs when an album loads: right-click it -> **Refresh**.
 
-Check the load log:
+## "Failed To Switch Ref ... Has Uncommitted Changes"
 
-```bash
-Get-Content "$env:LOCALAPPDATA\MusicBrainz\Picard\plugins\local_genre_db_load.log" -Tail 50
-```
-
-The log should show:
-
-```text
-db_path='path\\to\\picard-genre-db\\taxonomy.db' exists=True
-json_path='path\\to\\picard-genre-db\\taxonomy.json' exists=True
-snapshot_loaded ...
-```
-
-If the DB path points somewhere else, fix `taxonomy_path.txt`.
-
-If the log shows `taxonomy_missing` with a path under your home folder, the
-plugin found no pointer files. Put them in the plugins folder that contains the
-plugin's folder (see setup step 5).
-
-If the JSON path points somewhere else, fix `taxonomy_json_path.txt`.
+Plugin versions 0.4.0 and 0.4.1 wrote a log file inside the plugin's folder,
+which blocks Picard's update. Uninstall Local Genre DB and install it again from
+the URL, choosing the newest tag. Settings are kept.
 
 ## I Changed The DB But Picard Did Not Change
 
-Refresh the JSON snapshot:
+Right-click the album -> **Refresh**: the plugin re-reads `taxonomy.db` on every
+lookup. If the status line says it is using `taxonomy.json` instead, refresh the
+JSON snapshot:
 
 ```bash
 python manage_taxonomy.py --db taxonomy.db export-plugin-json --out taxonomy.json

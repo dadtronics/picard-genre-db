@@ -22,9 +22,6 @@ dev = ["ruff>=0.6", "pytest>=8"]
 [tool.ruff]
 line-length = 100
 target-version = "py314"
-# Generated/runtime artifacts and the Picard plugin (loaded inside Picard,
-# which provides its own globals) are excluded from linting.
-extend-exclude = ["plugins"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]

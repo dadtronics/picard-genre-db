@@ -18,6 +18,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `AGENTS.md` documenting repo conventions; Development section in the README.
 
 ### Changed
+- The Picard plugin moved to its own repository,
+  https://github.com/dadtronics/picard-local-genre-db (removed `plugins/`).
+  Setup and troubleshooting docs updated for its settings page.
 - Minimum Python raised to 3.14 (was 3.9; 3.9 is end-of-life and the
   Picard 3.0.5 bundled Python is 3.14).
 - Library/domain code now raises `TaxonomyError` instead of `SystemExit`; the

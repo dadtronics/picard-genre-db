@@ -9,7 +9,7 @@ A local genre/style taxonomy for MusicBrainz Picard:
 
 - `manage_taxonomy.py` — CLI + shared library (normalization, DB access, decisions).
 - `app.py` — local web UI (stdlib `http.server`), imports `manage_taxonomy`.
-- `plugins/local_genre_db/` — the Picard plugin (runs inside Picard).
+- The Picard plugin lives in its own repo, https://github.com/dadtronics/picard-local-genre-db (not here).
 - `export_library_tags.py` — scans audio files to CSV (needs `mutagen`).
 - `bootstrap_db.py` — seeds a fresh DB with starter vocabulary.
 - `schema.sql` — the SQLite schema (source of truth; applied via `ensure_schema`).
@@ -53,7 +53,5 @@ pytest -q                           # tests live in tests/
 
 ## Gotchas
 
-- The Picard plugin is excluded from linting (it relies on Picard-provided
-  globals) and is not import-safe outside Picard.
 - `*.db`, `taxonomy.json`, and scan/export outputs are gitignored runtime data —
   don't commit them.
