@@ -48,7 +48,7 @@ pytest -q                           # tests live in tests/
 - Tests use an in-memory SQLite DB seeded by the `con` fixture in
   `tests/conftest.py`. Prefer testing the pure helpers and decision round-trips
   there rather than spinning up the web server.
-- CI (`.github/workflows/ci.yml`) runs `ruff check` + `pytest` on 3.9 and 3.12;
+- CI (`.github/workflows/ci.yml`) runs `ruff check` + `pytest` on 3.14 and 3.15;
   keep both green.
 
 ## Gotchas

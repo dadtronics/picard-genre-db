@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "picard-genre-db"
 version = "0.1.0"
 description = "Local genre/style taxonomy database, web UI, and Picard plugin"
-requires-python = ">=3.9"
+requires-python = ">=3.14"
 license = "GPL-2.0-or-later"
 license-files = ["LICENSE"]
 # The core CLI and web UI (manage_taxonomy.py, app.py) use only the Python
@@ -21,7 +21,7 @@ dev = ["ruff>=0.6", "pytest>=8"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
+target-version = "py314"
 # Generated/runtime artifacts and the Picard plugin (loaded inside Picard,
 # which provides its own globals) are excluded from linting.
 extend-exclude = ["plugins"]

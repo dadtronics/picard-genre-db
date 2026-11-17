@@ -7,19 +7,12 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        include:
-          # ubuntu-latest (26.04) has no CPython 3.9 build; 24.04 still does.
-          - python-version: "3.9"
-            os: ubuntu-24.04
-          - python-version: "3.12"
-            os: ubuntu-latest
-          # Picard 3.0.5 bundles Python 3.14 (what the plugin actually runs on).
-          - python-version: "3.14"
-            os: ubuntu-latest
+        # 3.14 = minimum and what Picard 3.0.5 bundles; 3.15 = current release.
+        python-version: ["3.14", "3.15"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up Python ${{ matrix.python-version }}

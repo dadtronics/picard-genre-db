@@ -26,7 +26,7 @@ Below, "project folder" means the folder containing this repo, e.g.
 
 Clone or download this repository into a folder you intend to keep — moving it
 later means updating the pointer files from step 5. Run every `python` command
-below from inside that folder. Python 3.9+ is required.
+below from inside that folder. Python 3.14+ is required.
 
 ## 2. Create The Database
 
