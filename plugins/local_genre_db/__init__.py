@@ -1,14 +1,6 @@
 # -*- coding: utf-8 -*-
-PLUGIN_NAME = 'Local Genre DB'
-PLUGIN_AUTHOR = 'OpenAI'
-PLUGIN_DESCRIPTION = 'Apply canonical genre/style tags from a local taxonomy snapshot.'
-PLUGIN_VERSION = '0.3.0'
-PLUGIN_API_VERSIONS = [
-    '2.0', '2.1', '2.2', '2.3', '2.4', '2.5', '2.6', '2.7',
-    '2.8', '2.9', '2.10', '2.11', '2.12', '2.13',
-]
-PLUGIN_LICENSE = 'MIT'
-PLUGIN_LICENSE_URL = 'https://opensource.org/licenses/MIT'
+# Local Genre DB - Picard 3.0 (plugin3/MANIFEST.toml) format.
+# See MANIFEST.toml in this folder for name/version/metadata.
 
 import json
 import os
@@ -16,7 +8,6 @@ from datetime import datetime
 from typing import Iterable, List, Optional, Set
 
 from picard import log
-from picard.metadata import register_album_metadata_processor, register_track_metadata_processor
 
 TAXONOMY_DB_PATH = os.path.expanduser('~/taxonomy.db')
 TAXONOMY_JSON_PATH = os.path.expanduser('~/taxonomy.json')
@@ -465,11 +456,11 @@ def _process_metadata(metadata, entity_type: str) -> None:
         log.error('Local Genre DB: processing failed: %s', exc)
 
 
-def process_album(tagger, metadata, release):
+def process_album(album, metadata, release_node):
     _process_metadata(metadata, 'release')
 
 
-def process_track(tagger, metadata, track, release):
+def process_track(track, metadata, track_node, release_node=None):
     _process_metadata(metadata, 'recording')
 
 
@@ -493,6 +484,19 @@ def _log_plugin_load() -> None:
         _append_file_log(f'snapshot_load_error={exc!r}')
 
 
-register_album_metadata_processor(process_album)
-register_track_metadata_processor(process_track)
-_log_plugin_load()
+def enable(api) -> None:
+    """Picard 3.0 entry point: register metadata processors."""
+    try:
+        from picard.metadata import album_metadata_processors, track_metadata_processors
+        album_metadata_processors.register(__name__, process_album)
+        track_metadata_processors.register(__name__, process_track)
+    except Exception as exc:
+        _append_file_log(f'register_error={exc!r}')
+        log.error('Local Genre DB: failed to register processors: %s', exc)
+        return
+    _append_file_log('enabled')
+    _log_plugin_load()
+
+
+def disable() -> None:
+    _append_file_log('disabled')
