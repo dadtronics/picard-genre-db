@@ -26,6 +26,10 @@ snapshot_loaded ...
 
 If the DB path points somewhere else, fix `taxonomy_path.txt`.
 
+If the log shows `taxonomy_missing` with a path under your home folder, the
+plugin found no pointer files. Put them in the plugins folder that contains the
+plugin's folder (see setup step 5).
+
 If the JSON path points somewhere else, fix `taxonomy_json_path.txt`.
 
 ## I Changed The DB But Picard Did Not Change

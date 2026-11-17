@@ -2,7 +2,7 @@ uuid = "ec8d05fd-2dc3-430a-a995-bb0b9b076b02"
 name = "Local Genre DB"
 description = "Apply canonical genre/style tags from a local taxonomy database (taxonomy.db or taxonomy.json snapshot)."
 api = ["3.0"]
-version = "0.4.0"
+version = "0.4.1"
 authors = ["aaron"]
 license = "MIT"
 license_url = "https://opensource.org/licenses/MIT"
@@ -12,8 +12,9 @@ tags in MusicBrainz Picard.
 
 - Reads taxonomy.db directly when the bundled Python has sqlite3, otherwise
   falls back to taxonomy.json.
-- Paths are configured via taxonomy_path.txt and taxonomy_json_path.txt
-  placed next to this plugin folder.
+- Paths are configured via taxonomy_path.txt and taxonomy_json_path.txt,
+  read from the plugin folder or, failing that, the Plugins folder above it
+  (the safe spot: it survives plugin updates).
 - Explicit decisions overwrite Picard metadata; alias mappings fill blanks.
 """
 categories = ["metadata"]

@@ -33,7 +33,10 @@ git clone https://github.com/dadtronics/picard-local-genre-db "%APPDATA%/MusicBr
 
 ## Point it at your taxonomy
 
-The plugin looks for these files **in its own folder**:
+The plugin looks for these files in its own folder first, then in the
+plugins folder above it. **Put them in the plugins folder** (e.g.
+`C:\Portable\Picard\MusicBrainz-Picard\Plugins\`): installing or updating
+from GitHub replaces the plugin's own folder and would lose them.
 
 - `taxonomy_path.txt` — absolute path to your `taxonomy.db`
   (preferred; requires a Python with `sqlite3` — Picard 3.x bundled
@@ -50,7 +53,10 @@ taxonomy_json_path.txt   ->  C:\Users\you\Projects\picard-genre-db\taxonomy.json
 
 ## Notes
 
-- Logs to `local_genre_db_load.log` in its own folder.
+- Logs to `local_genre_db_load.log` in its own folder. Lines saying
+  `taxonomy_missing` mean the path files weren't found.
+- Lookups read the DB fresh each time, but Picard only runs the plugin when a
+  release loads: after adding a decision, right-click the release → Refresh.
 - Runs as album- and track-level metadata processors; changes are
   in-memory until you save the tags.
 

@@ -60,8 +60,10 @@ into Picard's plugin folder:
 ## 5. Point The Plugin At Your Data
 
 The plugin now needs to find the `taxonomy.db` and `taxonomy.json` back in your
-project folder. Create two small **pointer files** in Picard's plugin folder,
-right next to `local_genre_db.py`. Each file holds a **single line: the absolute
+project folder. Create two small **pointer files** directly in Picard's plugins
+folder (the folder that *contains* the plugin, not inside the plugin's own
+folder: installs and updates from GitHub replace that folder and would delete
+them). The plugin checks its own folder first, then the one above it. Each file holds a **single line: the absolute
 path** to the real file — the plugin reads only that first line, and a leading
 `~` is expanded to your home directory.
 

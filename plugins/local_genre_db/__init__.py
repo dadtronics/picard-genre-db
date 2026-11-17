@@ -40,17 +40,31 @@ def _append_file_log(message: str) -> None:
         pass
 
 
+def _read_path_file(name: str) -> str:
+    """Return the first line of a path file, or ''.
+
+    Looks in the plugin folder first, then its parent (the Plugins folder).
+    The parent lets the path files survive reinstalls/updates from git, which
+    replace the plugin folder.
+    """
+    plugin_dir = _plugin_dir()
+    for folder in (plugin_dir, os.path.dirname(plugin_dir)):
+        try:
+            with open(os.path.join(folder, name), 'r', encoding='utf-8-sig') as config_file:
+                file_path = config_file.readline().strip().lstrip('\ufeff')
+        except OSError:
+            continue
+        if file_path:
+            return file_path
+    return ''
+
+
 def _taxonomy_json_path() -> str:
     env_path = os.environ.get('PICARD_TAXONOMY_JSON', '').strip()
     if env_path:
         return os.path.expanduser(env_path)
 
-    config_path = os.path.join(_plugin_dir(), 'taxonomy_json_path.txt')
-    try:
-        with open(config_path, 'r', encoding='utf-8-sig') as config_file:
-            file_path = config_file.readline().strip().lstrip('\ufeff')
-    except OSError:
-        file_path = ''
+    file_path = _read_path_file('taxonomy_json_path.txt')
     if file_path:
         return os.path.expanduser(file_path)
 
@@ -62,12 +76,7 @@ def _taxonomy_db_path() -> str:
     if env_path:
         return os.path.expanduser(env_path)
 
-    config_path = os.path.join(_plugin_dir(), 'taxonomy_path.txt')
-    try:
-        with open(config_path, 'r', encoding='utf-8-sig') as config_file:
-            file_path = config_file.readline().strip().lstrip('\ufeff')
-    except OSError:
-        file_path = ''
+    file_path = _read_path_file('taxonomy_path.txt')
     if file_path:
         return os.path.expanduser(file_path)
 
@@ -187,7 +196,9 @@ def _load_sqlite_snapshot(db_path: str):
                     COALESCE(NULLIF(d.genres_text, ''), cg.name) AS genre,
                     d.styles_text AS styles
                 FROM {table} d
-                JOIN canonical_genre cg ON cg.id = d.normalized_genre_id
+                LEFT JOIN canonical_genre cg ON cg.id = d.normalized_genre_id
+                WHERE COALESCE(NULLIF(d.genres_text, ''), cg.name, '') != ''
+                   OR COALESCE(d.styles_text, '') != ''
                 '''
             ).fetchall()
             return {
