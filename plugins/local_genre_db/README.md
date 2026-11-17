@@ -53,7 +53,9 @@ taxonomy_json_path.txt   ->  C:\Users\you\Projects\picard-genre-db\taxonomy.json
 
 ## Notes
 
-- Logs to `local_genre_db_load.log` in its own folder. Lines saying
+- Writes `local_genre_db_load.log` and `local_genre_db_pending.jsonl` to the
+  plugins folder above its own folder, never inside it (Picard won't update
+  a plugin whose folder has untracked files). Log lines saying
   `taxonomy_missing` mean the path files weren't found.
 - Lookups read the DB fresh each time, but Picard only runs the plugin when a
   release loads: after adding a decision, right-click the release → Refresh.

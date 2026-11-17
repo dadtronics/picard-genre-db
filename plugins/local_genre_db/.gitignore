@@ -1,0 +1,8 @@
+# Runtime files. The plugin writes these to the parent Plugins folder, but
+# keep them ignored in case someone drops them here: Picard refuses to update
+# or switch refs when a plugin checkout has untracked files.
+local_genre_db_load.log
+local_genre_db_pending.jsonl
+taxonomy_path.txt
+taxonomy_json_path.txt
+__pycache__/

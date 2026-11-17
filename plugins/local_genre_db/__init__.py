@@ -31,9 +31,19 @@ def _plugin_dir() -> str:
     return plugin_dir
 
 
+def _data_dir() -> str:
+    """Folder for files the plugin writes (log, pending decisions).
+
+    The parent of the plugin folder (Picard's Plugins folder). Picard 3
+    installs plugins as git checkouts and refuses to update or switch refs
+    while untracked files sit inside them, and a reinstall deletes the folder.
+    """
+    return os.path.dirname(_plugin_dir())
+
+
 def _append_file_log(message: str) -> None:
     try:
-        log_path = os.path.join(_plugin_dir(), 'local_genre_db_load.log')
+        log_path = os.path.join(_data_dir(), 'local_genre_db_load.log')
         with open(log_path, 'a', encoding='utf-8') as handle:
             handle.write(f'{datetime.now().isoformat(timespec="seconds")} {message}\n')
     except Exception:
@@ -84,7 +94,7 @@ def _taxonomy_db_path() -> str:
 
 
 def _pending_path() -> str:
-    return os.path.join(_plugin_dir(), 'local_genre_db_pending.jsonl')
+    return os.path.join(_data_dir(), 'local_genre_db_pending.jsonl')
 
 
 def _preferred_scope(metadata) -> str:
